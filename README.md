@@ -6,4 +6,4 @@ Google/Apple-polished UI with React + Vite + Tailwind + Framer Motion + Toasts.
 
 ## 1) Install
 ```bash
-npm install
+npm install"# shiftbid" 
