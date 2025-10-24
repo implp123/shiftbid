@@ -14,6 +14,7 @@ import Header from "./components/Header.jsx";
 import TrainingDivision from "./components/TrainingDivision.jsx";
 import ShiftCard from "./components/ShiftCard.jsx";
 import FirefighterCard from "./components/FirefighterCard.jsx";
+import Commentators from "./components/Commentators.jsx";
 
 export default function MainApp() {
   const [pool, setPool] = useState([]);
@@ -21,7 +22,8 @@ export default function MainApp() {
   const [shifts, setShifts] = useState({ A: [], B: [], C: [] });
   const [td, setTD] = useState([]);
   const [dragOver, setDragOver] = useState(null);
-  const [history, setHistory] = useState([]); // action-based undo stack
+  const [history, setHistory] = useState([]);
+  const [latestPlacement, setLatestPlacement] = useState(null);
 
   // --- Helper: find where a firefighter currently is ---
   const findCurrentLocation = useCallback(
@@ -47,11 +49,8 @@ export default function MainApp() {
         toast.error("Nothing to undo");
         return h;
       }
-
       const last = h[h.length - 1];
-      const { person, from, to } = last;
-
-      // Remove firefighter from their current spot
+      const { person, from } = last;
       setPool((prev) => prev.filter((x) => x.id !== person.id));
       setTD((prev) => prev.filter((x) => x.id !== person.id));
       setShifts((prev) => {
@@ -59,20 +58,17 @@ export default function MainApp() {
         for (const k in n) n[k] = n[k].filter((x) => x.id !== person.id);
         return n;
       });
-
-      // Restore firefighter to their previous spot
       if (from === "pool")
         setPool((prev) => [...prev, person].sort((a, b) => a.id - b.id));
       else if (from === "TD") setTD((prev) => [...prev, person]);
       else if (["A", "B", "C"].includes(from))
         setShifts((prev) => ({ ...prev, [from]: [...prev[from], person] }));
-
       toast.success(`Undid: ${person.name} back to ${from}`);
       return h.slice(0, -1);
     });
   }, []);
 
-  // Optional Ctrl+Z
+  // --- Keyboard Undo (Ctrl+Z) ---
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -84,7 +80,7 @@ export default function MainApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undoLast]);
 
-  // Load Excel roster on startup
+  // --- Load Excel roster on startup ---
   useEffect(() => {
     import("xlsx").then((XLSX) => {
       fetch("/DRAFTBOARD (1).xlsx")
@@ -101,7 +97,7 @@ export default function MainApp() {
     });
   }, []);
 
-  // Memoized helpers
+  // --- Memoized helpers ---
   const allShiftMembers = useMemo(() => Object.values(shifts).flat(), [shifts]);
   const livePool = useMemo(() => countsFor(pool), [pool]);
   const poolCounts = useMemo(() => {
@@ -114,7 +110,7 @@ export default function MainApp() {
     return map;
   }, [pool]);
 
-  // Assign firefighter to a shift
+  // --- Add to Shift ---
   const addToShift = useCallback(
     (person, k) => {
       const from = findCurrentLocation(person);
@@ -131,7 +127,7 @@ export default function MainApp() {
     [findCurrentLocation, recordMove]
   );
 
-  // Add to Training Division (acts like 4th shift)
+  // --- Add to Training Division ---
   const addToTD = useCallback(
     (person) => {
       const from = findCurrentLocation(person);
@@ -146,7 +142,6 @@ export default function MainApp() {
         const exists = prev.some((x) => x.id === person.id);
         return exists ? prev : [...prev, person];
       });
-
       const placeSound = new Audio("/kazoo.mp3");
       placeSound.volume = 0.8;
       placeSound.play().catch(() => {});
@@ -155,7 +150,7 @@ export default function MainApp() {
     [findCurrentLocation, recordMove]
   );
 
-  // Requirement logic (unchanged)
+  // --- Placement validation ---
   const checkPlacement = useCallback(
     (person, k, shifts, pool) => {
       const newShifts = { ...shifts, [k]: [...shifts[k], person] };
@@ -167,7 +162,6 @@ export default function MainApp() {
         capCount > 5
       )
         return "Shift already has 5 Captains (including Capt-Medics).";
-
       const capMedicCounts = ["A", "B", "C"].map(
         (s) => newShifts[s].filter((p) => p.specialties.CaptainParamedic).length
       );
@@ -178,7 +172,6 @@ export default function MainApp() {
       );
       if (poolCapMedics < remainingNeed)
         return "Not enough Captain-Medics to meet the 2-per-shift minimum.";
-
       for (const spec of SPECIALTIES) {
         const key = spec.key;
         const min = minFor(key);
@@ -193,12 +186,11 @@ export default function MainApp() {
     [poolCounts]
   );
 
-  // Drag/drop handlers
+  // --- Drag/drop handlers ---
   const onDragStart = useCallback((ev, id) => {
     ev.dataTransfer.setData("text/plain", id);
     ev.dataTransfer.effectAllowed = "move";
   }, []);
-
   const allowDrop = useCallback((ev) => {
     ev.preventDefault();
     ev.dataTransfer.dropEffect = "move";
@@ -223,12 +215,12 @@ export default function MainApp() {
       const placeSound = new Audio("/shift_place.m4a");
       placeSound.volume = 0.8;
       placeSound.play().catch(() => {});
+      setLatestPlacement({ name: person.name, shift: `Shift ${k}` });
       toast.success(`${person.name} added to Shift ${k}`);
     },
     [allShiftMembers, pool, td, shifts, addToShift, checkPlacement]
   );
 
-  // Training Division drop
   const onDropToTD = useCallback(
     (ev) => {
       ev.preventDefault();
@@ -244,7 +236,6 @@ export default function MainApp() {
     [pool, td, allShiftMembers, addToTD]
   );
 
-  // Return to Pool (works for TD too)
   const onDragEndToPool = useCallback(
     (person, droppedOnEl) => {
       if (
@@ -270,7 +261,7 @@ export default function MainApp() {
     [findCurrentLocation, recordMove, td]
   );
 
-  // Export to Excel
+  // --- Export to Excel ---
   const exportToExcel = useCallback(() => {
     const wb = XLSX.utils.book_new();
     const mk = (title, list) => {
@@ -315,40 +306,32 @@ export default function MainApp() {
         {/* Controls */}
         <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-goldAmber hover:bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)] active:scale-95 transition"
-            >
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-goldAmber hover:bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)] active:scale-95 transition">
               Print Summary
             </button>
-            <button
-              onClick={exportToExcel}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-amber-300 hover:bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)] active:scale-95 transition"
-            >
+            <button onClick={exportToExcel} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-amber-300 hover:bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)] active:scale-95 transition">
               Export to Excel
             </button>
-            <button
-              onClick={undoLast}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-amber-200 hover:bg-amber-300 ring-1 ring-amber-600/40 active:scale-95 transition"
-              title="Undo last placement"
-            >
+            <button onClick={undoLast} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-amber-200 hover:bg-amber-300 ring-1 ring-amber-600/40 active:scale-95 transition">
               ← Back
             </button>
           </div>
 
-          <TrainingDivision
-            td={td}
-            onDrop={onDropToTD}
-            onDragEnter={() => setDragOver("TD")}
-            onDragLeave={() => setDragOver(null)}
-            allowDrop={allowDrop}
-            dragOver={dragOver === "TD"}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEndToPool}
-          />
+          {/* Training Division + Commentators */}
+          <div className="flex items-start gap-6">
+            <TrainingDivision
+              td={td}
+              onDrop={onDropToTD}
+              onDragEnter={() => setDragOver("TD")}
+              onDragLeave={() => setDragOver(null)}
+              allowDrop={allowDrop}
+              dragOver={dragOver === "TD"}
+            />
+            <Commentators latestPlacement={latestPlacement} />
+          </div>
         </div>
 
-                                {/* Main Grid — responsive for desktop & mobile */}
+        {/* Main Grid */}
         <div className="mt-1 grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Firefighter Pool */}
           <div
@@ -378,27 +361,23 @@ export default function MainApp() {
             </div>
           </div>
 
-          {/* Shifts A, B, C */}
+          {/* Shifts */}
           {["A", "B", "C"].map((k) => (
-            <div key={k} className="shift-column">
-              <ShiftCard
-                k={k}
-                shifts={shifts}
-                setShifts={setShifts}
-                onDropToShift={onDropToShift}
-                setDragOver={setDragOver}
-                allowDrop={allowDrop}
-                dragOver={dragOver === k}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEndToPool}
-              />
-            </div>
+            <ShiftCard
+              key={k}
+              k={k}
+              shifts={shifts}
+              setShifts={setShifts}
+              onDropToShift={onDropToShift}
+              setDragOver={setDragOver}
+              allowDrop={allowDrop}
+              dragOver={dragOver === k}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEndToPool}
+            />
           ))}
         </div>
       </main>
     </div>
   );
 }
-
-
-
