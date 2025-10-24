@@ -42,9 +42,22 @@ export const RULES = {
   wildlandMax: 8,
 };
 
+// ✅ Safer version — never breaks the app
 export function parseSheetToRoster(wb) {
+  if (
+    !wb ||
+    !wb.Sheets ||
+    !Array.isArray(wb.SheetNames) ||
+    wb.SheetNames.length === 0 ||
+    !wb.Sheets[wb.SheetNames[0]]
+  ) {
+    console.warn("⚠️ Workbook format not recognized, skipping parse.");
+    return [];
+  }
+
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }).slice(1);
+
   return rows
     .map((r, i) => {
       const name = r[0];
@@ -77,63 +90,40 @@ export function countsFor(list) {
     SPECIALTIES.forEach((s) => {
       if (p.specialties[s.key]) {
         c[s.key]++;
-        // Captain-Medics also count as Captains
-        if (s.key === "CaptainParamedic") c["Captain"]++;
+        if (s.key === "CaptainParamedic") c["Captain"]++; // Capt-Medics count as Captains
       }
     });
   });
-
   return c;
 }
 
-
 export function capFor(key) {
   switch (key) {
-    case "BattalionChief":
-      return 1;
-    case "ActingBattalion":
-      return RULES.actingBattalionMax;
-    case "Captain":
-      return RULES.captainMin;
-    case "CaptainParamedic":
-      return RULES.captainParamedicMin;
-    case "ActingCaptain":
-      return RULES.actingCaptainMin;
-    case "Paramedic":
-      return RULES.paramedicMin;
-    case "HazMat":
-      return RULES.hazmatMax;
-    case "WaterRescue":
-      return RULES.waterMax;
-    case "Wildland":
-      return RULES.wildlandMax;
-    default:
-      return Infinity;
+    case "BattalionChief": return 1;
+    case "ActingBattalion": return RULES.actingBattalionMax;
+    case "Captain": return RULES.captainMin;
+    case "CaptainParamedic": return RULES.captainParamedicMin;
+    case "ActingCaptain": return RULES.actingCaptainMin;
+    case "Paramedic": return RULES.paramedicMin;
+    case "HazMat": return RULES.hazmatMax;
+    case "WaterRescue": return RULES.waterMax;
+    case "Wildland": return RULES.wildlandMax;
+    default: return Infinity;
   }
 }
 
 export function minFor(key) {
   switch (key) {
-    case "BattalionChief":
-      return 1;
-    case "ActingBattalion":
-      return RULES.actingBattalionMin;
-    case "Captain":
-      return RULES.captainMin;
-    case "CaptainParamedic":
-      return RULES.captainParamedicMin;
-    case "ActingCaptain":
-      return RULES.actingCaptainMin;
-    case "Paramedic":
-      return RULES.paramedicMin;
-    case "HazMat":
-      return RULES.hazmatMin;
-    case "WaterRescue":
-      return RULES.waterMin;
-    case "Wildland":
-      return RULES.wildlandMin;
-    default:
-      return 0;
+    case "BattalionChief": return 1;
+    case "ActingBattalion": return RULES.actingBattalionMin;
+    case "Captain": return RULES.captainMin;
+    case "CaptainParamedic": return RULES.captainParamedicMin;
+    case "ActingCaptain": return RULES.actingCaptainMin;
+    case "Paramedic": return RULES.paramedicMin;
+    case "HazMat": return RULES.hazmatMin;
+    case "WaterRescue": return RULES.waterMin;
+    case "Wildland": return RULES.wildlandMin;
+    default: return 0;
   }
 }
 
@@ -149,15 +139,9 @@ export function getRemainingNeedsPerShift(shifts, key) {
 
 export function poolMessageFor(person, pool, shifts) {
   const priority = [
-    "ActingBattalion",
-    "BattalionChief",
-    "CaptainParamedic",
-    "Paramedic",
-    "ActingCaptain",
-    "Captain",
-    "HazMat",
-    "WaterRescue",
-    "Wildland",
+    "ActingBattalion", "BattalionChief", "CaptainParamedic",
+    "Paramedic", "ActingCaptain", "Captain", "HazMat",
+    "WaterRescue", "Wildland",
   ];
   for (const key of priority) {
     if (!person.specialties[key]) continue;
@@ -176,18 +160,10 @@ export function poolMessageFor(person, pool, shifts) {
       ? ["A", "B", "C"].filter((s) => needs[s] > 0 && openByShift[s] > 0)
       : [];
     if (hasMin && totalNeed > 0 && poolSupply <= totalNeed) {
-      if (needShifts.length === 1) {
-        return {
-          shifts: needShifts,
-          text: `Must choose Shift ${needShifts[0]} — only enough ${title}s left to meet minimums.`,
-        };
-      }
-      if (needShifts.length === 2) {
-        return {
-          shifts: needShifts,
-          text: `Must choose Shift ${needShifts.join(" or ")} — only enough ${title}s left to meet minimums.`,
-        };
-      }
+      if (needShifts.length === 1)
+        return { shifts: needShifts, text: `Must choose Shift ${needShifts[0]} — only enough ${title}s left to meet minimums.` };
+      if (needShifts.length === 2)
+        return { shifts: needShifts, text: `Must choose Shift ${needShifts.join(" or ")} — only enough ${title}s left to meet minimums.` };
     }
   }
   return null;
