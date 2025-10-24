@@ -348,15 +348,15 @@ export default function MainApp() {
           />
         </div>
 
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-1">
-          {/* Pool */}
+                                {/* Main Grid — responsive for desktop & mobile */}
+        <div className="mt-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Firefighter Pool */}
           <div
             onDragOver={allowDrop}
             onDrop={(ev) => ev.preventDefault()}
-            className="glass rounded-2xl p-4 md:p-5 overflow-hidden bg-[rgba(42,10,10,0.6)] ring-1 ring-amber-900/40 backdrop-blur-md"
+            className="firefighter-list glass rounded-2xl p-4 md:p-5 bg-[rgba(42,10,10,0.6)] ring-1 ring-amber-900/40 backdrop-blur-md"
           >
-            <h2 className="font-semibold text-amber-300 mb-3 flex items-center justify-center ember-flicker">
+            <h2 className="font-semibold text-amber-300 mb-3 text-center ember-flicker">
               Available Firefighters
             </h2>
             <div className="overflow-auto max-h-[65vh] pr-1 will-change-transform">
@@ -364,36 +364,41 @@ export default function MainApp() {
                 const noteObj = poolMessageFor(p, pool, shifts);
                 const singleChoice = noteObj?.shifts?.length === 1;
                 return (
-                  <FirefighterCard
-                    key={p.id}
-                    person={p}
-                    note={noteObj?.text}
-                    singleChoice={singleChoice}
-                    onDragStart={onDragStart}
-                    onDragEnd={onDragEndToPool}
-                  />
+                  <div key={p.id} className="draggable">
+                    <FirefighterCard
+                      person={p}
+                      note={noteObj?.text}
+                      singleChoice={singleChoice}
+                      onDragStart={onDragStart}
+                      onDragEnd={onDragEndToPool}
+                    />
+                  </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Shifts */}
+          {/* Shifts A, B, C */}
           {["A", "B", "C"].map((k) => (
-            <ShiftCard
-              key={k}
-              k={k}
-              shifts={shifts}
-              setShifts={setShifts}
-              onDropToShift={onDropToShift}
-              setDragOver={setDragOver}
-              allowDrop={allowDrop}
-              dragOver={dragOver === k}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEndToPool}
-            />
+            <div key={k} className="shift-column">
+              <ShiftCard
+                k={k}
+                shifts={shifts}
+                setShifts={setShifts}
+                onDropToShift={onDropToShift}
+                setDragOver={setDragOver}
+                allowDrop={allowDrop}
+                dragOver={dragOver === k}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEndToPool}
+              />
+            </div>
           ))}
         </div>
       </main>
     </div>
   );
 }
+
+
+
