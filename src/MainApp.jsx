@@ -21,6 +21,68 @@ export default function MainApp() {
   const [shifts, setShifts] = useState({ A: [], B: [], C: [] });
   const [td, setTD] = useState([]);
   const [dragOver, setDragOver] = useState(null);
+  const [history, setHistory] = useState([]); // action-based undo stack
+
+  // --- Helper: find where a firefighter currently is ---
+  const findCurrentLocation = useCallback(
+    (person) => {
+      if (pool.some((p) => p.id === person.id)) return "pool";
+      if (td.some((p) => p.id === person.id)) return "TD";
+      for (const k of ["A", "B", "C"])
+        if (shifts[k].some((p) => p.id === person.id)) return k;
+      return "pool";
+    },
+    [pool, td, shifts]
+  );
+
+  // --- Undo System ---
+  const recordMove = useCallback((person, from, to) => {
+    if (from === to) return;
+    setHistory((h) => [...h, { person, from, to }]);
+  }, []);
+
+  const undoLast = useCallback(() => {
+    setHistory((h) => {
+      if (h.length === 0) {
+        toast.error("Nothing to undo");
+        return h;
+      }
+
+      const last = h[h.length - 1];
+      const { person, from, to } = last;
+
+      // Remove firefighter from their current spot
+      setPool((prev) => prev.filter((x) => x.id !== person.id));
+      setTD((prev) => prev.filter((x) => x.id !== person.id));
+      setShifts((prev) => {
+        const n = { ...prev };
+        for (const k in n) n[k] = n[k].filter((x) => x.id !== person.id);
+        return n;
+      });
+
+      // Restore firefighter to their previous spot
+      if (from === "pool")
+        setPool((prev) => [...prev, person].sort((a, b) => a.id - b.id));
+      else if (from === "TD") setTD((prev) => [...prev, person]);
+      else if (["A", "B", "C"].includes(from))
+        setShifts((prev) => ({ ...prev, [from]: [...prev[from], person] }));
+
+      toast.success(`Undid: ${person.name} back to ${from}`);
+      return h.slice(0, -1);
+    });
+  }, []);
+
+  // Optional Ctrl+Z
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undoLast();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undoLast]);
 
   // Load Excel roster on startup
   useEffect(() => {
@@ -53,44 +115,47 @@ export default function MainApp() {
   }, [pool]);
 
   // Assign firefighter to a shift
-  const addToShift = useCallback((person, k) => {
-    setPool((prev) => prev.filter((x) => x.id !== person.id));
-    setTD((prev) => prev.filter((x) => x.id !== person.id));
-    setShifts((prev) => {
-      const n = { ...prev };
-      for (const s in n) n[s] = n[s].filter((x) => x.id !== person.id);
-      n[k] = [...n[k], person];
-      return n;
-    });
-  }, []);
+  const addToShift = useCallback(
+    (person, k) => {
+      const from = findCurrentLocation(person);
+      recordMove(person, from, k);
+      setPool((prev) => prev.filter((x) => x.id !== person.id));
+      setTD((prev) => prev.filter((x) => x.id !== person.id));
+      setShifts((prev) => {
+        const n = { ...prev };
+        for (const s in n) n[s] = n[s].filter((x) => x.id !== person.id);
+        n[k] = [...n[k], person];
+        return n;
+      });
+    },
+    [findCurrentLocation, recordMove]
+  );
 
-  // Add to training division
+  // Add to Training Division (acts like 4th shift)
   const addToTD = useCallback(
-    async (person) => {
-      if (td.length >= 1) {
-        toast.error("Training Division full.");
-        return;
-      }
+    (person) => {
+      const from = findCurrentLocation(person);
+      recordMove(person, from, "TD");
       setPool((prev) => prev.filter((x) => x.id !== person.id));
       setShifts((prev) => {
         const next = { ...prev };
         for (const s in next) next[s] = next[s].filter((x) => x.id !== person.id);
         return next;
       });
-      setTD([person]);
-      // Play placement sound
-const placeSound = new Audio("/kazoo.mp3");
-placeSound.volume = 0.8;
-placeSound.play().catch(() => {});
+      setTD((prev) => {
+        const exists = prev.some((x) => x.id === person.id);
+        return exists ? prev : [...prev, person];
+      });
 
-// Show success toast
-toast.success(`${person.name} added to Shift ${k}`);
-
+      const placeSound = new Audio("/kazoo.mp3");
+      placeSound.volume = 0.8;
+      placeSound.play().catch(() => {});
+      toast.success(`${person.name} added to Training Division`);
     },
-    [td.length]
+    [findCurrentLocation, recordMove]
   );
 
-  // Requirement logic
+  // Requirement logic (unchanged)
   const checkPlacement = useCallback(
     (person, k, shifts, pool) => {
       const newShifts = { ...shifts, [k]: [...shifts[k], person] };
@@ -155,19 +220,15 @@ toast.success(`${person.name} added to Shift ${k}`);
         return;
       }
       addToShift(person, k);
-			// Play placement sound
-const placeSound = new Audio("/shift_place.m4a");
-placeSound.volume = 0.8;
-placeSound.play().catch(() => {});
-
-// Show success toast
-toast.success(`${person.name} added to Shift ${k}`);
-
-      
+      const placeSound = new Audio("/shift_place.m4a");
+      placeSound.volume = 0.8;
+      placeSound.play().catch(() => {});
+      toast.success(`${person.name} added to Shift ${k}`);
     },
     [allShiftMembers, pool, td, shifts, addToShift, checkPlacement]
   );
 
+  // Training Division drop
   const onDropToTD = useCallback(
     (ev) => {
       ev.preventDefault();
@@ -183,20 +244,22 @@ toast.success(`${person.name} added to Shift ${k}`);
     [pool, td, allShiftMembers, addToTD]
   );
 
+  // Return to Pool (works for TD too)
   const onDragEndToPool = useCallback(
     (person, droppedOnEl) => {
-      const fromTD = td.some((p) => p.id === person.id);
-      if (fromTD) return;
       if (
         !droppedOnEl ||
         (!droppedOnEl.closest?.(".shift-card") &&
           !droppedOnEl.closest?.(".td-card"))
       ) {
+        const from = findCurrentLocation(person);
+        recordMove(person, from, "pool");
         setShifts((prev) => {
           const n = { ...prev };
           for (const k in n) n[k] = n[k].filter((x) => x.id !== person.id);
           return n;
         });
+        setTD((prev) => prev.filter((x) => x.id !== person.id));
         setPool((prev) =>
           prev.some((x) => x.id === person.id)
             ? prev
@@ -204,7 +267,7 @@ toast.success(`${person.name} added to Shift ${k}`);
         );
       }
     },
-    [td]
+    [findCurrentLocation, recordMove, td]
   );
 
   // Export to Excel
@@ -264,6 +327,13 @@ toast.success(`${person.name} added to Shift ${k}`);
             >
               Export to Excel
             </button>
+            <button
+              onClick={undoLast}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-amber-900 bg-amber-200 hover:bg-amber-300 ring-1 ring-amber-600/40 active:scale-95 transition"
+              title="Undo last placement"
+            >
+              ← Back
+            </button>
           </div>
 
           <TrainingDivision
@@ -273,6 +343,8 @@ toast.success(`${person.name} added to Shift ${k}`);
             onDragLeave={() => setDragOver(null)}
             allowDrop={allowDrop}
             dragOver={dragOver === "TD"}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEndToPool}
           />
         </div>
 
@@ -305,7 +377,7 @@ toast.success(`${person.name} added to Shift ${k}`);
             </div>
           </div>
 
-          {/* Shift Columns */}
+          {/* Shifts */}
           {["A", "B", "C"].map((k) => (
             <ShiftCard
               key={k}
