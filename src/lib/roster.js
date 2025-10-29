@@ -34,11 +34,11 @@ export const RULES = {
   actingBattalionMin: 1,
   actingBattalionMax: 1,
   paramedicMin: 7,
-  hazmatMin: 5,
+  hazmatMin: 0,
   hazmatMax: 8,
-  waterMin: 5,
+  waterMin: 0,
   waterMax: 8,
-  wildlandMin: 5,
+  wildlandMin: 0,
   wildlandMax: 8,
 };
 
