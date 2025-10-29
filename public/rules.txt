@@ -12,5 +12,5 @@ AT LEAST two Medic Capts. per shift**
   *Fixed the error when the whole website would crash when Hanson was selected*
 -Hotfix 1.2-
   *Lowered minimum of techs to 0 for added flexability*
-  *Fixed Hanson.error(2) . Parsed stolenLowerSeniorityMembersKidney.jsx into a .json file and
-   ensure compability with exportSeniorityList.xlsx*
+  *Fixed Hanson.error(2) . Parsed stolenLowerSeniorityMembersKidney.jsx into a .json file 
+   and ensure compability with exportSeniorityList.xlsx*
